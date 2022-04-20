@@ -5,10 +5,6 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 #[async_std::main]
 async fn main() -> io::Result<()> {
     let mut stream = TcpStream::connect("localhost:6379").await?;
-    let mut buffer = vec![];
-    let ping = ResponseValues::Array(vec![ResponseValues::BulkString(b"PING".to_vec())]);
-    ping.serialize(&mut buffer);
-    stream.write_all(&buffer).await?;
     let mut buffer = vec![0; 1024];
     let bytes_read = stream.read(&mut buffer).await?;
     parse_response(&buffer[0..bytes_read]);
@@ -29,6 +25,32 @@ fn parse_response(buffer: &[u8]) -> Result<&str, String> {
     }
 
     Ok(std::str::from_utf8(&buffer[1..buffer.len() - 2]).unwrap())
+}
+
+struct Error {}
+
+impl std::convert::From<io::Error> for Error {
+    fn from(e: io::Error) -> Self {
+        Error {}
+    }
+}
+
+struct Client {
+    stream: TcpStream,
+}
+
+impl Client {
+    async fn set(&mut self, key: String, value: String) -> Result<(), Error> {
+        let command = ResponseValues::Array(vec![
+            ResponseValues::BulkString(b"SET".to_vec()),
+            ResponseValues::BulkString(b"Vjeko".to_vec()),
+            ResponseValues::BulkString(b"Test".to_vec()),
+        ]);
+        let mut buffer = vec![];
+        command.serialize(&mut buffer);
+        self.stream.write_all(&buffer).await?;
+        Ok(())
+    }
 }
 
 enum ResponseValues {
