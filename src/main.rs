@@ -1,16 +1,22 @@
 use async_std::io;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use futures::{AsyncReadExt, AsyncWriteExt};
-use std::os::macos::raw::stat;
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
     let mut client = Client::new("localhost:6379").await?;
+    /*    println!(
+            "Print, {}",
+            client.set("vjeko".into(), "keks".into()).await.unwrap()
+        );
+                println!("Print, {}", client.get("vjeko".into()).await.unwrap());
+    */
+    client.set("vjeko".into(), "keks".into()).await.unwrap();
+    client.set("zeko".into(), "seks".into()).await.unwrap();
     println!(
         "Print, {}",
-        client.set("vjeko".into(), "keks".into()).await.unwrap()
+        client.delete("vjeko zeko".into()).await.unwrap()
     );
-    println!("Print, {}", client.get("vjeko".into()).await.unwrap());
     Ok(())
 }
 
@@ -31,6 +37,10 @@ fn parse_response(buffer: &[u8], bytes_read: usize) -> Result<&str, Error> {
 
     if buffer[0] == (b'$') {
         response = std::str::from_utf8(&buffer[4..bytes_read]).unwrap();
+    }
+
+    if buffer[0] == (b':') {
+        response = std::str::from_utf8(&buffer[1..3]).unwrap();
     }
 
     Ok(response)
@@ -82,6 +92,25 @@ impl Client {
         let response = parse_response(&buffer, bytes_read)?;
         Ok(response.to_owned())
     }
+    async fn delete(&mut self, key: String) -> Result<String, Error> {
+        let mut keys = split_string(&key)?;
+        let mut values = vec![RespValues::BulkString(b"DEL".to_vec())];
+        for value in keys {
+            values.push(RespValues::BulkString(value.to_string().into_bytes()));
+        }
+        let command = RespValues::Array(values);
+        let mut buffer = vec![];
+        command.serialize(&mut buffer);
+        self.stream.write_all(&buffer).await?;
+        let bytes_read = self.stream.read(&mut buffer).await?;
+        let response = parse_response(&buffer, bytes_read)?;
+        Ok(response.to_owned())
+    }
+}
+
+fn split_string(key: &String) -> Result<Vec<&str>, Error> {
+    let v: Vec<&str> = key.split(' ').collect();
+    Ok(v)
 }
 
 enum RespValues {
