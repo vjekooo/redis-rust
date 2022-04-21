@@ -1,17 +1,22 @@
 use async_std::io;
 use async_std::net::{TcpStream, ToSocketAddrs};
 use futures::{AsyncReadExt, AsyncWriteExt};
+use std::os::macos::raw::stat;
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
     let mut client = Client::new("localhost:6379").await?;
-    client.set("vjeko".into(), "keks".into()).await.unwrap();
+    println!(
+        "Print, {}",
+        client.set("vjeko".into(), "keks".into()).await.unwrap()
+    );
     println!("Print, {}", client.get("vjeko".into()).await.unwrap());
     Ok(())
 }
 
 fn parse_response(buffer: &[u8], bytes_read: usize) -> Result<&str, Error> {
-    let first_bytes = 4;
+    let mut response = "";
+
     if buffer.is_empty() {
         return Err(Error {});
     }
@@ -20,12 +25,15 @@ fn parse_response(buffer: &[u8], bytes_read: usize) -> Result<&str, Error> {
         return Err(Error {});
     }
 
-    println!(
-        "Parse, {:?}",
-        std::str::from_utf8(&buffer[first_bytes..bytes_read]).unwrap()
-    );
+    if buffer[0] == (b'+') {
+        response = std::str::from_utf8(&buffer[1..3]).unwrap();
+    }
 
-    Ok(std::str::from_utf8(&buffer[first_bytes..bytes_read]).unwrap())
+    if buffer[0] == (b'$') {
+        response = std::str::from_utf8(&buffer[4..bytes_read]).unwrap();
+    }
+
+    Ok(response)
 }
 
 #[derive(Debug)]
@@ -61,7 +69,7 @@ impl Client {
         let response = parse_response(&buffer, bytes_read)?;
         Ok(response.to_owned())
     }
-    async fn set(&mut self, key: String, value: String) -> Result<(), Error> {
+    async fn set(&mut self, key: String, value: String) -> Result<String, Error> {
         let command = RespValues::Array(vec![
             RespValues::BulkString(b"SET".to_vec()),
             RespValues::BulkString(key.into_bytes()),
@@ -71,8 +79,8 @@ impl Client {
         command.serialize(&mut buffer);
         self.stream.write_all(&buffer).await?;
         let bytes_read = self.stream.read(&mut buffer).await?;
-        parse_response(&buffer, bytes_read);
-        Ok(())
+        let response = parse_response(&buffer, bytes_read)?;
+        Ok(response.to_owned())
     }
 }
 
