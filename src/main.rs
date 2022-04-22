@@ -6,9 +6,8 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 async fn main() -> io::Result<()> {
     let mut client = Client::new("localhost:6379").await?;
     client.set("vjeko".into(), "keks".into()).await.unwrap();
-    client.set("zeko".into(), "text".into()).await.unwrap();
 
-    client.delete("vjeko zeko".into()).await.unwrap();
+    client.rename("vjeko".into(), "peko".into()).await.unwrap();
     Ok(())
 }
 
@@ -93,6 +92,19 @@ impl Client {
             values.push(RespValues::BulkString(value.to_string().into_bytes()));
         }
         let command = RespValues::Array(values);
+        let mut buffer = vec![];
+        command.serialize(&mut buffer);
+        self.stream.write_all(&buffer).await?;
+        let bytes_read = self.stream.read(&mut buffer).await?;
+        let response = parse_response(&buffer, bytes_read)?;
+        Ok(response.to_owned())
+    }
+    async fn rename(&mut self, key: String, new_key: String) -> Result<String, Error> {
+        let command = RespValues::Array(vec![
+            RespValues::BulkString(b"RENAME".to_vec()),
+            RespValues::BulkString(key.into_bytes()),
+            RespValues::BulkString(new_key.into_bytes()),
+        ]);
         let mut buffer = vec![];
         command.serialize(&mut buffer);
         self.stream.write_all(&buffer).await?;
