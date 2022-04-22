@@ -5,7 +5,10 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 #[async_std::main]
 async fn main() -> io::Result<()> {
     let mut client = Client::new("localhost:6379").await?;
-    client.set("vjeko".into(), "keks".into()).await.unwrap();
+    client
+        .set("vjeko".into(), "keks".into(), Some("60".into()))
+        .await
+        .unwrap();
 
     client.rename("vjeko".into(), "peko".into()).await.unwrap();
     Ok(())
@@ -72,12 +75,23 @@ impl Client {
         let response = parse_response(&buffer, bytes_read)?;
         Ok(response.to_owned())
     }
-    async fn set(&mut self, key: String, value: String) -> Result<String, Error> {
-        let command = RespValues::Array(vec![
+    async fn set(
+        &mut self,
+        key: String,
+        value: String,
+        ex: Option<String>,
+    ) -> Result<String, Error> {
+        let mut values = vec![
             RespValues::BulkString(b"SET".to_vec()),
             RespValues::BulkString(key.into_bytes()),
             RespValues::BulkString(value.into_bytes()),
-        ]);
+        ];
+        if ex.is_some() {
+            let string = ex.unwrap();
+            values.push(RespValues::BulkString(b"EX".to_vec()));
+            values.push(RespValues::BulkString(string.into_bytes()));
+        }
+        let command = RespValues::Array(values);
         let mut buffer = vec![];
         command.serialize(&mut buffer);
         self.stream.write_all(&buffer).await?;
@@ -86,7 +100,7 @@ impl Client {
         Ok(response.to_owned())
     }
     async fn delete(&mut self, key: String) -> Result<String, Error> {
-        let mut keys = split_string(&key)?;
+        let keys = split_string(&key)?;
         let mut values = vec![RespValues::BulkString(b"DEL".to_vec())];
         for value in keys {
             values.push(RespValues::BulkString(value.to_string().into_bytes()));
