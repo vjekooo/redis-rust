@@ -5,18 +5,10 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 #[async_std::main]
 async fn main() -> io::Result<()> {
     let mut client = Client::new("localhost:6379").await?;
-    /*    println!(
-            "Print, {}",
-            client.set("vjeko".into(), "keks".into()).await.unwrap()
-        );
-                println!("Print, {}", client.get("vjeko".into()).await.unwrap());
-    */
     client.set("vjeko".into(), "keks".into()).await.unwrap();
-    client.set("zeko".into(), "seks".into()).await.unwrap();
-    println!(
-        "Print, {}",
-        client.delete("vjeko zeko".into()).await.unwrap()
-    );
+    client.set("zeko".into(), "text".into()).await.unwrap();
+
+    client.delete("vjeko zeko".into()).await.unwrap();
     Ok(())
 }
 
@@ -42,6 +34,8 @@ fn parse_response(buffer: &[u8], bytes_read: usize) -> Result<&str, Error> {
     if buffer[0] == (b':') {
         response = std::str::from_utf8(&buffer[1..3]).unwrap();
     }
+
+    println!("Response, {}", response);
 
     Ok(response)
 }
