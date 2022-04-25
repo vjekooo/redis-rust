@@ -7,10 +7,8 @@ async fn main() -> io::Result<()> {
     let mut client = Client::new("localhost:6379").await?;
     client
         .set("vjeko".into(), "keks".into(), Some("60".into()))
-        .await
-        .unwrap();
+        .await;
 
-    client.rename("vjeko".into(), "peko".into()).await.unwrap();
     Ok(())
 }
 
@@ -68,12 +66,7 @@ impl Client {
             RespValues::BulkString(b"GET".to_vec()),
             RespValues::BulkString(key.into_bytes()),
         ]);
-        let mut buffer = vec![];
-        command.serialize(&mut buffer);
-        self.stream.write_all(&buffer).await?;
-        let bytes_read = self.stream.read(&mut buffer).await?;
-        let response = parse_response(&buffer, bytes_read)?;
-        Ok(response.to_owned())
+        write_to_db(&mut self.stream, command).await
     }
     async fn set(
         &mut self,
@@ -92,12 +85,7 @@ impl Client {
             values.push(RespValues::BulkString(string.into_bytes()));
         }
         let command = RespValues::Array(values);
-        let mut buffer = vec![];
-        command.serialize(&mut buffer);
-        self.stream.write_all(&buffer).await?;
-        let bytes_read = self.stream.read(&mut buffer).await?;
-        let response = parse_response(&buffer, bytes_read)?;
-        Ok(response.to_owned())
+        write_to_db(&mut self.stream, command).await
     }
     async fn delete(&mut self, key: String) -> Result<String, Error> {
         let keys = split_string(&key)?;
@@ -106,12 +94,7 @@ impl Client {
             values.push(RespValues::BulkString(value.to_string().into_bytes()));
         }
         let command = RespValues::Array(values);
-        let mut buffer = vec![];
-        command.serialize(&mut buffer);
-        self.stream.write_all(&buffer).await?;
-        let bytes_read = self.stream.read(&mut buffer).await?;
-        let response = parse_response(&buffer, bytes_read)?;
-        Ok(response.to_owned())
+        write_to_db(&mut self.stream, command).await
     }
     async fn rename(&mut self, key: String, new_key: String) -> Result<String, Error> {
         let command = RespValues::Array(vec![
@@ -119,13 +102,17 @@ impl Client {
             RespValues::BulkString(key.into_bytes()),
             RespValues::BulkString(new_key.into_bytes()),
         ]);
-        let mut buffer = vec![];
-        command.serialize(&mut buffer);
-        self.stream.write_all(&buffer).await?;
-        let bytes_read = self.stream.read(&mut buffer).await?;
-        let response = parse_response(&buffer, bytes_read)?;
-        Ok(response.to_owned())
+        write_to_db(&mut self.stream, command).await
     }
+}
+
+async fn write_to_db(stream: &mut TcpStream, command: RespValues) -> Result<String, Error> {
+    let mut buffer = vec![];
+    command.serialize(&mut buffer);
+    stream.write_all(&buffer).await?;
+    let bytes_read = stream.read(&mut buffer).await?;
+    let response = parse_response(&buffer, bytes_read)?;
+    Ok(response.to_owned())
 }
 
 fn split_string(key: &String) -> Result<Vec<&str>, Error> {
