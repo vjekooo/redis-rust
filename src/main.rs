@@ -4,9 +4,14 @@ use futures::{AsyncReadExt, AsyncWriteExt};
 
 #[async_std::main]
 async fn main() -> io::Result<()> {
-    let mut client = Client::new("localhost:6379").await?;
+    let mut client = run_client().await?;
     client
-        .set("vjeko".into(), "keks".into(), Some("60".into()))
+        .set(
+            "vjeko".into(),
+            "keks".into(),
+            Some("60".into()),
+            Some("GET".into()),
+        )
         .await;
 
     Ok(())
@@ -73,7 +78,9 @@ impl Client {
         key: String,
         value: String,
         ex: Option<String>,
+        get: Option<String>,
     ) -> Result<String, Error> {
+        let get_key = key.clone();
         let mut values = vec![
             RespValues::BulkString(b"SET".to_vec()),
             RespValues::BulkString(key.into_bytes()),
@@ -85,7 +92,12 @@ impl Client {
             values.push(RespValues::BulkString(string.into_bytes()));
         }
         let command = RespValues::Array(values);
-        write_to_db(&mut self.stream, command).await
+        let response = write_to_db(&mut self.stream, command).await?;
+        if get.is_some() {
+            let mut client = run_client().await?;
+            client.get(get_key).await;
+        }
+        Ok(response)
     }
     async fn delete(&mut self, key: String) -> Result<String, Error> {
         let keys = split_string(&key)?;
@@ -119,6 +131,28 @@ fn split_string(key: &String) -> Result<Vec<&str>, Error> {
     let v: Vec<&str> = key.split(' ').collect();
     Ok(v)
 }
+
+async fn run_client() -> io::Result<Client> {
+    let client = Client::new("localhost:6379").await?;
+    Ok(client)
+}
+
+/*enum TimeToLive {
+    Ex(String),
+    Px(String),
+    Exat(String),
+    Pxat(String),
+}
+
+impl TimeToLive {
+    fn set(self) -> &'static [u8; 2] {
+        match self {
+            TimeToLive::Ex(value) => b"Ex",
+            _ => unimplemented!(),
+        }
+    }
+}
+*/
 
 enum RespValues {
     SimpleString(String),
