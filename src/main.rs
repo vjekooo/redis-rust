@@ -9,7 +9,7 @@ async fn main() -> io::Result<()> {
         .set(
             "vjeko".into(),
             "keks".into(),
-            Some("60".into()),
+            Some(TimeToLive::Px("6000".into())),
             Some("GET".into()),
         )
         .await;
@@ -77,7 +77,7 @@ impl Client {
         &mut self,
         key: String,
         value: String,
-        ex: Option<String>,
+        ttl: Option<TimeToLive>,
         get: Option<String>,
     ) -> Result<String, Error> {
         let get_key = key.clone();
@@ -86,10 +86,11 @@ impl Client {
             RespValues::BulkString(key.into_bytes()),
             RespValues::BulkString(value.into_bytes()),
         ];
-        if ex.is_some() {
-            let string = ex.unwrap();
-            values.push(RespValues::BulkString(b"EX".to_vec()));
-            values.push(RespValues::BulkString(string.into_bytes()));
+        if ttl.is_some() {
+            let unwrapped = ttl.unwrap().set();
+            for value in unwrapped {
+                values.push(value);
+            }
         }
         let command = RespValues::Array(values);
         let response = write_to_db(&mut self.stream, command).await?;
@@ -137,7 +138,7 @@ async fn run_client() -> io::Result<Client> {
     Ok(client)
 }
 
-/*enum TimeToLive {
+enum TimeToLive {
     Ex(String),
     Px(String),
     Exat(String),
@@ -145,14 +146,35 @@ async fn run_client() -> io::Result<Client> {
 }
 
 impl TimeToLive {
-    fn set(self) -> &'static [u8; 2] {
+    fn set(self) -> Vec<RespValues> {
         match self {
-            TimeToLive::Ex(value) => b"Ex",
-            _ => unimplemented!(),
+            TimeToLive::Ex(value) => {
+                vec![
+                    RespValues::BulkString(b"EX".to_vec()),
+                    RespValues::BulkString(value.into_bytes()),
+                ]
+            }
+            TimeToLive::Px(value) => {
+                vec![
+                    RespValues::BulkString(b"PX".to_vec()),
+                    RespValues::BulkString(value.into_bytes()),
+                ]
+            }
+            TimeToLive::Exat(value) => {
+                vec![
+                    RespValues::BulkString(b"Exat".to_vec()),
+                    RespValues::BulkString(value.into_bytes()),
+                ]
+            }
+            TimeToLive::Pxat(value) => {
+                vec![
+                    RespValues::BulkString(b"Pxat".to_vec()),
+                    RespValues::BulkString(value.into_bytes()),
+                ]
+            }
         }
     }
 }
-*/
 
 enum RespValues {
     SimpleString(String),
