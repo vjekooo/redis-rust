@@ -80,24 +80,29 @@ impl Client {
         ttl: Option<TimeToLive>,
         get: Option<String>,
     ) -> Result<String, Error> {
-        let get_key = key.clone();
+        let key_clone = key.clone();
+        let existing_value;
+
+        if get.is_some() {
+            let mut client = run_client().await?;
+            let response = client.get(key).await?;
+            existing_value = response;
+        }
+
         let mut values = vec![
             RespValues::BulkString(b"SET".to_vec()),
-            RespValues::BulkString(key.into_bytes()),
+            RespValues::BulkString(key_clone.into_bytes()),
             RespValues::BulkString(value.into_bytes()),
         ];
+
         if ttl.is_some() {
-            let unwrapped = ttl.unwrap().set();
-            for value in unwrapped {
+            let ttl_values = ttl.unwrap().init();
+            for value in ttl_values {
                 values.push(value);
             }
         }
         let command = RespValues::Array(values);
         let response = write_to_db(&mut self.stream, command).await?;
-        if get.is_some() {
-            let mut client = run_client().await?;
-            client.get(get_key).await;
-        }
         Ok(response)
     }
     async fn delete(&mut self, key: String) -> Result<String, Error> {
@@ -146,7 +151,7 @@ enum TimeToLive {
 }
 
 impl TimeToLive {
-    fn set(self) -> Vec<RespValues> {
+    fn init(self) -> Vec<RespValues> {
         match self {
             TimeToLive::Ex(value) => {
                 vec![
